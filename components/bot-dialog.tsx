@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import type { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { ShuffleIcon } from "lucide-react"
 import { nanoid } from "nanoid"
@@ -74,7 +75,13 @@ function emptyValues(): BotFormInput {
   return { name: "", avatar: nanoid(), job: "", instructions: "" }
 }
 
-function BotDialog({ children }: { children: React.ReactElement }) {
+function BotDialog({
+  children,
+  handle,
+}: {
+  children?: React.ReactElement
+  handle?: DialogPrimitive.Handle<unknown>
+}) {
   const [open, setOpen] = React.useState(false)
   const [isPending, startTransition] = React.useTransition()
 
@@ -114,8 +121,8 @@ function BotDialog({ children }: { children: React.ReactElement }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger render={children} />
+    <Dialog open={open} onOpenChange={handleOpenChange} handle={handle}>
+      {children && <DialogTrigger render={children} />}
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>New bot</DialogTitle>
