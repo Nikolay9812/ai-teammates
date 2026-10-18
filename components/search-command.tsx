@@ -1,11 +1,9 @@
 "use client"
 
-import * as React from "react"
+import { createContext, useContext, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { SearchIcon } from "lucide-react"
 
-import { ChatAvatar } from "@/components/chat-avatar"
-import { Button } from "@/components/ui/button"
 import {
   Command,
   CommandDialog,
@@ -16,20 +14,22 @@ import {
   CommandList,
 } from "@/components/ui/command"
 import { Kbd } from "@/components/ui/kbd"
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar"
 
-type SearchChat = {
-  id: string
-  name: string
-  avatar: string
-}
+// Lets an item close the dialog it is rendered in
+const SearchCommandContext = createContext<() => void>(() => {})
 
-function SearchCommand({ chats }: { chats: SearchChat[] }) {
-  const [open, setOpen] = React.useState(false)
-  const router = useRouter()
+// Children are the SearchCommandItems, rendered by the server so the avatars stay out of the client bundle
+function SearchCommand({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState(false)
 
-  React.useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "k" && (event.metaKey || event.ctrlKey)) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key?.toLowerCase() === "k" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault()
         setOpen((open) => !open)
       }
@@ -40,49 +40,57 @@ function SearchCommand({ chats }: { chats: SearchChat[] }) {
   }, [])
 
   return (
-    <>
-      <Button
-        variant="outline"
-        className="h-8 w-full min-w-0 justify-start rounded-lg border border-input bg-transparent px-2.5 py-1 text-base font-normal text-muted-foreground md:text-sm dark:bg-input/30"
-        onClick={() => setOpen(true)}
-      >
-        <SearchIcon data-icon="inline-start" />
-        Search
-        <Kbd className="ml-auto gap-0 text-sm">
-          ⌘<span className="text-base">K</span>
-        </Kbd>
-      </Button>
+    <SearchCommandContext.Provider value={() => setOpen(false)}>
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            variant="outline"
+            tooltip="Search"
+            className="text-muted-foreground group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:text-sidebar-foreground group-data-[collapsible=icon]:shadow-none group-data-[collapsible=icon]:hover:bg-sidebar-accent"
+            onClick={() => setOpen(true)}
+          >
+            <SearchIcon />
+            <span>Search</span>
+            <Kbd className="ml-auto">⌘K</Kbd>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
       <CommandDialog
         open={open}
         onOpenChange={setOpen}
-        title="Search chats"
-        description="Search for a chat to open"
+        title="Search"
+        description="Search your chats"
       >
         <Command>
           <CommandInput placeholder="Search chats..." />
           <CommandList>
             <CommandEmpty>No chats found.</CommandEmpty>
-            <CommandGroup heading="Chats">
-              {chats.map((chat) => (
-                <CommandItem
-                  key={chat.id}
-                  value={chat.id}
-                  keywords={[chat.name]}
-                  onSelect={() => {
-                    setOpen(false)
-                    router.push(`/chats/${chat.id}`)
-                  }}
-                >
-                  <ChatAvatar seed={chat.avatar} className="size-6" />
-                  <span className="truncate">{chat.name}</span>
-                </CommandItem>
-              ))}
-            </CommandGroup>
+            <CommandGroup heading="Chats">{children}</CommandGroup>
           </CommandList>
         </Command>
       </CommandDialog>
-    </>
+    </SearchCommandContext.Provider>
   )
 }
 
-export { SearchCommand }
+function SearchCommandItem({
+  href,
+  ...props
+}: Omit<React.ComponentProps<typeof CommandItem>, "onSelect"> & {
+  href: string
+}) {
+  const router = useRouter()
+  const close = useContext(SearchCommandContext)
+
+  return (
+    <CommandItem
+      onSelect={() => {
+        close()
+        router.push(href)
+      }}
+      {...props}
+    />
+  )
+}
+
+export { SearchCommand, SearchCommandItem }

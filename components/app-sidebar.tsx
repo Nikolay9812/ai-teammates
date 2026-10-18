@@ -15,6 +15,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarRail,
 } from "@/components/ui/sidebar"
 import { getChats } from "@/queries/bots"
 
@@ -22,7 +23,7 @@ export async function AppSidebar() {
   const chats = await getChats()
 
   return (
-    <Sidebar>
+    <Sidebar collapsible="icon">
       <SidebarHeader>
         <div className="flex justify-end">
           <CreateMenu />
@@ -43,10 +44,14 @@ export async function AppSidebar() {
                 <SidebarMenuItem key={chat.id}>
                   <SidebarMenuButton
                     size="lg"
-                    className="h-auto"
+                    className="h-auto group-data-[collapsible=icon]:p-1!"
+                    tooltip={chat.name ?? chat.bot?.name ?? undefined}
                     render={<Link href={`/chats/${chat.id}`} />}
                   >
-                    <ChatAvatar seed={chat.bot?.avatar ?? chat.id} />
+                    <ChatAvatar
+                      seed={chat.bot?.avatar ?? chat.id}
+                      className="group-data-[collapsible=icon]:size-6"
+                    />
                     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <div className="flex items-baseline justify-between gap-2">
                         <span className="truncate font-medium">
@@ -72,19 +77,24 @@ export async function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton render={<div />} className="p-0 *:size-full">
+            <SidebarMenuButton
+              size="lg"
+              render={<div />}
+              className="p-0 *:size-full group-data-[collapsible=icon]:p-0!"
+            >
               <UserButton
                 showName
                 appearance={{
                   elements: {
                     rootBox: "flex size-full",
                     userButtonTrigger:
-                      "flex size-full items-center rounded-md p-2 text-inherit ring-sidebar-ring outline-hidden focus-visible:ring-2",
+                      "flex size-full items-center rounded-md p-2 text-inherit ring-sidebar-ring outline-hidden focus-visible:ring-2 group-data-[collapsible=icon]:p-1",
                     userButtonBox:
                       "w-full min-w-0 flex-row-reverse justify-end gap-2",
                     userButtonOuterIdentifier:
-                      "truncate ps-0 text-sm font-normal text-inherit",
-                    userButtonAvatarBox: "size-4 shrink-0",
+                      "truncate ps-0 text-sm font-normal text-inherit group-data-[collapsible=icon]:hidden",
+                    userButtonAvatarBox:
+                      "size-8 shrink-0 group-data-[collapsible=icon]:size-6",
                   },
                 }}
               />
@@ -92,6 +102,7 @@ export async function AppSidebar() {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
+      <SidebarRail />
     </Sidebar>
   )
 }
