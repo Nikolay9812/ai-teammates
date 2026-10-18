@@ -4,6 +4,7 @@ import { formatDistanceToNowStrict } from "date-fns"
 
 import { ChatAvatar } from "@/components/chat-avatar"
 import { CreateMenu } from "@/components/create-menu"
+import { SearchCommand } from "@/components/search-command"
 import {
   Sidebar,
   SidebarContent,
@@ -22,8 +23,17 @@ export async function AppSidebar() {
 
   return (
     <Sidebar>
-      <SidebarHeader className="flex-row justify-end">
-        <CreateMenu />
+      <SidebarHeader>
+        <div className="flex justify-end">
+          <CreateMenu />
+        </div>
+        <SearchCommand
+          chats={chats.map((chat) => ({
+            id: chat.id,
+            name: chat.name ?? chat.bot?.name ?? "",
+            avatar: chat.bot?.avatar ?? chat.id,
+          }))}
+        />
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
