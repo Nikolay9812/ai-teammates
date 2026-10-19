@@ -3,13 +3,25 @@
 import * as React from "react"
 import type { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { ShuffleIcon } from "lucide-react"
+import { ShuffleIcon, TrashIcon } from "lucide-react"
 import { nanoid } from "nanoid"
+import { unstable_rethrow } from "next/navigation"
 import { Controller, useForm, useWatch } from "react-hook-form"
 import type { z } from "zod"
 
-import { createBot } from "@/action/bot"
+import { createBot, deleteBot, updateBot } from "@/action/bot"
 import { ChatAvatar } from "@/components/chat-avatar"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -39,7 +51,7 @@ import {
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
-import { insertBotSchema } from "@/db/schema"
+import { insertBotSchema, type Bot } from "@/db/schema"
 
 type BotFormInput = z.input<typeof insertBotSchema>
 type BotFormOutput = z.output<typeof insertBotSchema>
@@ -75,15 +87,30 @@ function emptyValues(): BotFormInput {
   return { name: "", avatar: nanoid(), job: "", instructions: "" }
 }
 
+function botValues(
+  bot: Pick<Bot, "name" | "avatar" | "job" | "instructions">
+): BotFormInput {
+  return {
+    name: bot.name,
+    avatar: bot.avatar,
+    job: bot.job,
+    instructions: bot.instructions ?? "",
+  }
+}
+
+// Edits the given bot, or creates a new one when there is none
 function BotDialog({
   children,
   handle,
+  bot,
 }: {
   children?: React.ReactElement
   handle?: DialogPrimitive.Handle<unknown>
+  bot?: Pick<Bot, "id" | "name" | "avatar" | "job" | "instructions">
 }) {
   const [open, setOpen] = React.useState(false)
   const [isPending, startTransition] = React.useTransition()
+  const [isDeleting, startDeleteTransition] = React.useTransition()
 
   const form = useForm<BotFormInput, unknown, BotFormOutput>({
     resolver: zodResolver(insertBotSchema),
@@ -92,15 +119,17 @@ function BotDialog({
   const avatar = useWatch({ control: form.control, name: "avatar" })
 
   function handleOpenChange(next: boolean) {
-    // Start every new bot with a blank form and a fresh face
-    if (next) form.reset(emptyValues())
+    // Start edits from the saved bot, and new bots blank with a fresh face
+    if (next) form.reset(bot ? botValues(bot) : emptyValues())
     setOpen(next)
   }
 
   function onSubmit(values: BotFormOutput) {
     startTransition(async () => {
       try {
-        const result = await createBot(values)
+        const result = bot
+          ? await updateBot(bot.id, values)
+          : await createBot(values)
         if (!result.ok) {
           for (const [key, messages] of Object.entries(result.errors)) {
             form.setError(key as keyof BotFormInput, {
@@ -109,11 +138,31 @@ function BotDialog({
           }
           return
         }
-        toast.add({ title: `${result.bot.name} is ready` })
+        toast.add({
+          title: bot
+            ? `${result.bot.name} is updated`
+            : `${result.bot.name} is ready`,
+        })
         setOpen(false)
       } catch {
         toast.add({
-          title: "Couldn't create the bot",
+          title: bot ? "Couldn't save the bot" : "Couldn't create the bot",
+          description: "Something went wrong. Try again.",
+        })
+      }
+    })
+  }
+
+  function onDelete(botId: string) {
+    startDeleteTransition(async () => {
+      try {
+        // Redirects home on success, so nothing runs after it
+        await deleteBot(botId)
+      } catch (error) {
+        // Let the redirect through; only real failures get a toast
+        unstable_rethrow(error)
+        toast.add({
+          title: "Couldn't delete the bot",
           description: "Something went wrong. Try again.",
         })
       }
@@ -125,27 +174,31 @@ function BotDialog({
       {children && <DialogTrigger render={children} />}
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>New bot</DialogTitle>
+          <DialogTitle>{bot ? "Edit bot" : "New bot"}</DialogTitle>
           <DialogDescription>
-            Give it a face, a name, and a job to do.
+            {bot
+              ? "Change its face, name, or how it does its job."
+              : "Give it a face, a name, and a job to do."}
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-wrap gap-2">
-          {templates.map((template) => (
-            <Button
-              key={template.job}
-              type="button"
-              variant="outline"
-              size="sm"
-              className="rounded-full"
-              onClick={() =>
-                form.reset({ ...template, avatar: form.getValues("avatar") })
-              }
-            >
-              {template.job}
-            </Button>
-          ))}
-        </div>
+        {!bot && (
+          <div className="flex flex-wrap gap-2">
+            {templates.map((template) => (
+              <Button
+                key={template.job}
+                type="button"
+                variant="outline"
+                size="sm"
+                className="rounded-full"
+                onClick={() =>
+                  form.reset({ ...template, avatar: form.getValues("avatar") })
+                }
+              >
+                {template.job}
+              </Button>
+            ))}
+          </div>
+        )}
         <form id="bot-form" onSubmit={form.handleSubmit(onSubmit)}>
           <FieldGroup>
             <Item className="px-0">
@@ -233,12 +286,55 @@ function BotDialog({
           </FieldGroup>
         </form>
         <DialogFooter>
+          {bot && (
+            <AlertDialog>
+              <AlertDialogTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    className="sm:mr-auto"
+                    disabled={isPending}
+                  />
+                }
+              >
+                <TrashIcon data-icon="inline-start" />
+                Delete
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete {bot.name}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This deletes the bot and its chat. You can&apos;t undo this.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={isDeleting}>
+                    Cancel
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    type="button"
+                    variant="destructive"
+                    disabled={isDeleting}
+                    onClick={() => onDelete(bot.id)}
+                  >
+                    {isDeleting && <Spinner data-icon="inline-start" />}
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
           <DialogClose render={<Button variant="outline" />}>
             Cancel
           </DialogClose>
-          <Button type="submit" form="bot-form" disabled={isPending}>
+          <Button
+            type="submit"
+            form="bot-form"
+            disabled={isPending || isDeleting}
+          >
             {isPending && <Spinner data-icon="inline-start" />}
-            Create bot
+            {bot ? "Save changes" : "Create bot"}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,8 +1,8 @@
-import Link from "next/link"
 import { UserButton } from "@clerk/nextjs"
 import { formatDistanceToNowStrict } from "date-fns"
 
 import { ChatAvatar } from "@/components/chat-avatar"
+import { ChatMenuButton } from "@/components/chat-menu-button"
 import { CreateMenu } from "@/components/create-menu"
 import { SearchCommand } from "@/components/search-command"
 import {
@@ -42,11 +42,11 @@ export async function AppSidebar() {
             <SidebarMenu>
               {chats.map((chat) => (
                 <SidebarMenuItem key={chat.id}>
-                  <SidebarMenuButton
+                  <ChatMenuButton
+                    chatId={chat.id}
                     size="lg"
                     className="h-auto group-data-[collapsible=icon]:p-1!"
                     tooltip={chat.name ?? chat.bot?.name ?? undefined}
-                    render={<Link href={`/chats/${chat.id}`} />}
                   >
                     <ChatAvatar
                       seed={chat.bot?.avatar ?? chat.id}
@@ -67,7 +67,7 @@ export async function AppSidebar() {
                         </span>
                       )}
                     </div>
-                  </SidebarMenuButton>
+                  </ChatMenuButton>
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
