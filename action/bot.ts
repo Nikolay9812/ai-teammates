@@ -8,7 +8,15 @@ import { redirect } from "next/navigation"
 import { z } from "zod"
 
 import { db } from "@/db"
-import { bots, chatMembers, chats, insertBotSchema } from "@/db/schema"
+import {
+  type Bot,
+  type Chat,
+  bots,
+  chatMembers,
+  chats,
+  insertBotSchema,
+} from "@/db/schema"
+import { createBotSandbox, deleteBotSandbox } from "@/lib/daytona"
 
 export async function createBot(input: z.input<typeof insertBotSchema>) {
   const { userId } = await auth.protect()
@@ -25,24 +33,35 @@ export async function createBot(input: z.input<typeof insertBotSchema>) {
   const botId = nanoid()
   const chatId = nanoid()
 
+  const sandboxId = await createBotSandbox(botId, userId)
+
   // A batch runs as one transaction, so the bot never exists without its chat
-  const [[bot], [chat]] = await db.batch([
-    db
-      .insert(bots)
-      .values({
-        ...parsed.data,
-        id: botId,
-        // Store blank instructions as null
-        instructions: parsed.data.instructions || null,
-        userId,
-      })
-      .returning(),
-    db
-      .insert(chats)
-      .values({ id: chatId, userId, kind: "direct" })
-      .returning(),
-    db.insert(chatMembers).values({ chatId, botId }),
-  ])
+  let bot: Bot
+  let chat: Chat
+  try {
+    ;[[bot], [chat]] = await db.batch([
+      db
+        .insert(bots)
+        .values({
+          ...parsed.data,
+          id: botId,
+          // Store blank instructions as null
+          instructions: parsed.data.instructions || null,
+          userId,
+          sandboxId,
+        })
+        .returning(),
+      db
+        .insert(chats)
+        .values({ id: chatId, userId, kind: "direct" })
+        .returning(),
+      db.insert(chatMembers).values({ chatId, botId }),
+    ])
+  } catch (error) {
+    // Don't leave a sandbox behind for a bot that was never saved
+    await deleteBotSandbox(sandboxId).catch(() => {})
+    throw error
+  }
 
   revalidatePath("/")
 
@@ -100,10 +119,13 @@ export async function deleteBot(botId: string) {
     db
       .delete(bots)
       .where(and(eq(bots.id, botId), eq(bots.userId, userId)))
-      .returning({ id: bots.id }),
+      .returning({ id: bots.id, sandboxId: bots.sandboxId }),
   ])
 
   if (deleted.length === 0) throw new Error("Bot not found")
+
+  const [{ sandboxId }] = deleted
+  if (sandboxId) await deleteBotSandbox(sandboxId)
 
   revalidatePath("/", "layout")
   // The page that opened the dialog may be the chat that was just deleted

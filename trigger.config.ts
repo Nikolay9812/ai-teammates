@@ -19,4 +19,8 @@ export default defineConfig({
     },
   },
   dirs: ["trigger"],
+  build: {
+    // Tasks read the database through `@/db`, which imports "server-only"
+    conditions: ["react-server"],
+  },
 });
