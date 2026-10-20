@@ -4,7 +4,7 @@ import { formatDistanceToNowStrict } from "date-fns"
 import { ChatAvatar } from "@/components/chat-avatar"
 import { ChatMenuButton } from "@/components/chat-menu-button"
 import { CreateMenu } from "@/components/create-menu"
-import { SearchCommand } from "@/components/search-command"
+import { SearchCommand, SearchCommandItem } from "@/components/search-command"
 import {
   Sidebar,
   SidebarContent,
@@ -28,13 +28,26 @@ export async function AppSidebar() {
         <div className="flex justify-end">
           <CreateMenu />
         </div>
-        <SearchCommand
-          chats={chats.map((chat) => ({
-            id: chat.id,
-            name: chat.name ?? chat.bot?.name ?? "",
-            avatar: chat.bot?.avatar ?? chat.id,
-          }))}
-        />
+        <SearchCommand>
+          {chats.map((chat) => {
+            const name = chat.name ?? chat.bot?.name ?? ""
+
+            return (
+              <SearchCommandItem
+                key={chat.id}
+                href={`/chats/${chat.id}`}
+                value={chat.id}
+                keywords={[name]}
+              >
+                <ChatAvatar
+                  seed={chat.bot?.avatar ?? chat.id}
+                  className="size-6"
+                />
+                <span className="truncate">{name}</span>
+              </SearchCommandItem>
+            )
+          })}
+        </SearchCommand>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
