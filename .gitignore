@@ -39,3 +39,6 @@ pnpm-debug.log*
 next-env.d.ts
 .firecrawl/
 .neon
+
+# claude code local settings
+.claude/settings.local.json
