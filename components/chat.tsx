@@ -1,7 +1,20 @@
 "use client"
 
 import { useChat } from "@ai-sdk/react"
+import type { TriggerChatTransport } from "@trigger.dev/sdk/chat"
+import {
+  useLoadTranscript,
+  useTriggerChatTransport,
+} from "@trigger.dev/sdk/chat/react"
+import type { UIMessage } from "ai"
 import { CircleAlertIcon } from "lucide-react"
+import { useCallback } from "react"
+
+import {
+  loadTranscript,
+  mintChatAccessToken,
+  startChatSession,
+} from "@/action/chat"
 
 import {
   Conversation,
@@ -29,9 +42,67 @@ import {
   AlertTitle,
 } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
+import type { chatAgent } from "@/trigger/chat"
 
-export function Chat() {
-  const { messages, sendMessage, status, stop, error, regenerate } = useChat()
+export function Chat({ chatId }: { chatId: string }) {
+  const transport = useTriggerChatTransport<typeof chatAgent>({
+    task: "chat",
+    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+    startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
+  })
+  const { messages, isLoading } = useLoadTranscript(chatId, loadTranscript, {
+    transport,
+  })
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <Spinner />
+      </div>
+    )
+  }
+
+  return (
+    <ChatView
+      chatId={chatId}
+      initialMessages={messages}
+      transport={transport}
+    />
+  )
+}
+
+// Mounted after the transcript loads, since useChat only reads its initial messages once
+function ChatView({
+  chatId,
+  initialMessages,
+  transport,
+}: {
+  chatId: string
+  initialMessages: UIMessage[]
+  transport: TriggerChatTransport
+}) {
+  const {
+    messages,
+    sendMessage,
+    status,
+    stop: stopLocal,
+    error,
+    regenerate,
+  } = useChat({
+    id: chatId,
+    messages: initialMessages,
+    transport,
+    // Reconnect to an answer still streaming from before a reload
+    resume: initialMessages.length > 0,
+  })
+
+  // useChat's stop doesn't reach the agent after a resume, so stop it directly too
+  const stop = useCallback(() => {
+    stopLocal()
+    transport.stopGeneration(chatId)
+  }, [stopLocal, transport, chatId])
 
   function handleSubmit(message: PromptInputMessage) {
     if (!message.text.trim()) return
