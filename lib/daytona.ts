@@ -65,3 +65,21 @@ export function getDesktopSandbox(sandboxId: string) {
     return sandbox
   })
 }
+
+// noVNC serves the desktop on this port
+const VNC_PORT = 6080
+
+// A signed noVNC URL for the sandbox desktop that a browser can load in an iframe
+export async function getDesktopUrl(sandboxId: string) {
+  // The browser can come back long after the sandbox auto-stopped, so check it again
+  sandboxes.delete(sandboxId)
+  desktops.delete(sandboxId)
+  const sandbox = await getDesktopSandbox(sandboxId)
+
+  const { url } = await sandbox.getSignedPreviewUrl(VNC_PORT, 3600)
+  const desktopUrl = new URL("/vnc.html", url)
+  desktopUrl.searchParams.set("autoconnect", "true")
+  desktopUrl.searchParams.set("reconnect", "true")
+  desktopUrl.searchParams.set("resize", "scale")
+  return desktopUrl.toString()
+}

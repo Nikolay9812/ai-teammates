@@ -8,6 +8,7 @@ import {
   type ChatStartSessionParams,
 } from "@trigger.dev/sdk/ai"
 
+import { getDesktopUrl } from "@/lib/daytona"
 import { getChat } from "@/queries/chats"
 import type { chatAgent } from "@/trigger/chat"
 
@@ -38,4 +39,12 @@ export async function mintChatAccessToken(chatId: string) {
 export async function loadTranscript(params: ChatLoadTranscriptParams) {
   await assertChatOwner(params.chatId)
   return load(params)
+}
+
+// The desktop of the chat's bot, started if its sandbox was stopped
+export async function getChatDesktopUrl(chatId: string) {
+  const chat = await getChat(chatId)
+  if (!chat) throw new Error("Chat not found")
+  if (!chat.bot?.sandboxId) throw new Error("Chat has no sandbox")
+  return getDesktopUrl(chat.bot.sandboxId)
 }
