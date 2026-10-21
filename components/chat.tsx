@@ -65,6 +65,7 @@ import {
   AlertDescription,
   AlertTitle,
 } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CodeBlock, CodeBlockContent } from "@/components/ui/code-block"
 import { Spinner } from "@/components/ui/spinner"
@@ -128,6 +129,7 @@ export function Chat({
       transport={transport}
       // Only group chats need to tell their bots apart
       bots={group ? bots : []}
+      botId={group ? botId : undefined}
       // The teammate a bot handed off to answers next, and stays picked after
       onHandoff={setBotId}
       botPicker={
@@ -188,6 +190,7 @@ function ChatView({
   initialMessages,
   transport,
   bots,
+  botId,
   onHandoff,
   botPicker,
 }: {
@@ -195,6 +198,8 @@ function ChatView({
   initialMessages: ChatMessage[]
   transport: TriggerChatTransport
   bots: ChatBot[]
+  // The bot picked to answer next, in group chats
+  botId: string | undefined
   onHandoff: (botId: string) => void
   botPicker: React.ReactNode
 }) {
@@ -246,7 +251,8 @@ function ChatView({
 
   function handleSubmit(message: PromptInputMessage) {
     if (!message.text.trim()) return
-    sendMessage({ text: message.text })
+    // Remembers who the message was for, so the conversation can show it
+    sendMessage({ text: message.text, metadata: { botId } })
   }
 
   return (
@@ -260,11 +266,10 @@ function ChatView({
             />
           ) : (
             messages.map((message) => {
-              // The agent tags each reply with the bot that wrote it
-              const author =
-                message.role === "assistant"
-                  ? bots.find((bot) => bot.id === message.metadata?.botId)
-                  : undefined
+              // A reply is tagged with the bot that wrote it, a user message with the bot it was for
+              const bot = bots.find((bot) => bot.id === message.metadata?.botId)
+              const author = message.role === "assistant" ? bot : undefined
+              const addressee = message.role === "user" ? bot : undefined
 
               return (
                 <Message
@@ -280,11 +285,28 @@ function ChatView({
                     />
                   )}
                   <MessageContent>
-                    {groupParts(message.parts).map((block) => {
+                    {groupParts(message.parts).map((block, position) => {
                       const key = `${message.id}-${block.index}`
                       switch (block.kind) {
                         case "text":
-                          return (
+                          // The text renders as block paragraphs, so the tag floats to share their first line
+                          return addressee && position === 0 ? (
+                            <div key={key} className="flow-root">
+                              <Badge
+                                variant="outline"
+                                className="float-left mr-1.5 max-w-32"
+                              >
+                                <ChatAvatar
+                                  seed={addressee.avatar}
+                                  className="-ml-1 size-3.5"
+                                />
+                                <span className="truncate">
+                                  {addressee.name}
+                                </span>
+                              </Badge>
+                              <MessageResponse>{block.text}</MessageResponse>
+                            </div>
+                          ) : (
                             <MessageResponse key={key}>
                               {block.text}
                             </MessageResponse>

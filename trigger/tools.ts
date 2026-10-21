@@ -257,7 +257,8 @@ export const handedOff: StopCondition<typeof tools> = ({ steps }) =>
   steps.at(-1)?.toolResults.some((result) => result.toolName === "handoff") ??
   false
 
-// The bot that wrote a reply, so group chats can show who said what
+// The bot that wrote a reply, or the bot a user message was for, so group chats can
+// show who said what to whom
 export type ChatMessageMetadata = { botId?: string }
 
 export type ChatUIMessage = UIMessage<
