@@ -8,10 +8,13 @@ const style = new Style(definition)
 function ChatAvatar({
   seed,
   animated = false,
+  alt = "",
   className,
 }: {
   seed: string
   animated?: boolean
+  // Decorative by default, since a name usually sits beside it
+  alt?: string
   className?: string
 }) {
   const src = new Avatar(style, {
@@ -22,7 +25,7 @@ function ChatAvatar({
   return (
     <Image
       src={src}
-      alt=""
+      alt={alt}
       width={32}
       height={32}
       unoptimized

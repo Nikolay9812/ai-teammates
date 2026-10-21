@@ -2,8 +2,12 @@ import "server-only"
 
 import { Daytona, DaytonaNotFoundError, type Sandbox } from "@daytona/sdk"
 
-// Reads DAYTONA_API_KEY and DAYTONA_API_URL from the environment
-export const daytona = new Daytona()
+// Reads DAYTONA_API_KEY from the environment. The endpoint is passed explicitly because the
+// SDK refuses to pick up DAYTONA_API_URL when it also sits in a .env file in the working
+// directory, which is how `trigger dev` loads .env.local.
+export const daytona = new Daytona({
+  apiUrl: process.env.DAYTONA_API_URL ?? "https://app.daytona.io/api",
+})
 
 // Each bot gets its own sandbox. Labels tie it back to the bot in the dashboard.
 export async function createBotSandbox(botId: string, userId: string) {

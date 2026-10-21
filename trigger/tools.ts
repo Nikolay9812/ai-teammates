@@ -1,13 +1,24 @@
-import { chat, type InferChatUIMessageFromTools } from "@trigger.dev/sdk/ai"
-import { tool } from "ai"
+import { chat } from "@trigger.dev/sdk/ai"
+import {
+  type InferUITools,
+  type StopCondition,
+  tool,
+  type UIDataTypes,
+  type UIMessage,
+} from "ai"
 import { z } from "zod"
 
 import { getDesktopSandbox, getStartedSandbox } from "@/lib/daytona"
 
-// The sandbox of the bot answering this turn, set in the agent's onTurnStart
-export const botSandbox = chat.local<{ sandboxId: string }>({
-  id: "botSandbox",
-})
+export type Teammate = { id: string; name: string; job: string }
+
+// The bot answering this turn and who it can hand off to, set in the agent's onTurnStart
+export const turnBot = chat.local<{
+  botId: string
+  sandboxId: string
+  // Empty outside group chats, and in a turn that was handed off, so handoffs can't loop
+  teammates: Teammate[]
+}>({ id: "turnBot" })
 
 // Keeps long command output and files from flooding the context
 const MAX_OUTPUT = 20_000
@@ -18,8 +29,8 @@ function truncate(text: string) {
     : text
 }
 
-const sandbox = () => getStartedSandbox(botSandbox.sandboxId)
-const desktop = () => getDesktopSandbox(botSandbox.sandboxId)
+const sandbox = () => getStartedSandbox(turnBot.sandboxId)
+const desktop = () => getDesktopSandbox(turnBot.sandboxId)
 
 // JPEG keeps a full-resolution screenshot well under the ~1 MiB stream record cap
 async function takeScreenshot() {
@@ -103,11 +114,14 @@ export const tools = {
   }),
 
   listFiles: tool({
-    description: "List the files and directories in a directory of your sandbox.",
+    description:
+      "List the files and directories in a directory of your sandbox.",
     inputSchema: z.object({
       path: z
         .string()
-        .describe("Absolute, or relative to your home directory. Use . for home."),
+        .describe(
+          "Absolute, or relative to your home directory. Use . for home."
+        ),
     }),
     execute: async ({ path }) => {
       const files = await (await sandbox()).fs.listFiles(path)
@@ -154,7 +168,8 @@ export const tools = {
   }),
 
   moveMouse: tool({
-    description: "Move the mouse pointer to a point on your desktop, e.g. to hover.",
+    description:
+      "Move the mouse pointer to a point on your desktop, e.g. to hover.",
     inputSchema: z.object(point),
     execute: async ({ x, y }) => {
       await (await desktop()).computerUse.mouse.move(x, y)
@@ -163,7 +178,8 @@ export const tools = {
   }),
 
   scroll: tool({
-    description: "Scroll the mouse wheel with the pointer at a point on your desktop.",
+    description:
+      "Scroll the mouse wheel with the pointer at a point on your desktop.",
     inputSchema: z.object({
       ...point,
       direction: z.enum(["up", "down"]),
@@ -208,6 +224,44 @@ export const tools = {
       return { ok: true }
     },
   }),
+
+  handoff: tool({
+    description:
+      "Hand the user's latest request to a teammate in this group chat whose job fits it better. " +
+      "The teammate answers right after you with their own tools and sandbox, so make this your last call " +
+      "and don't start the work yourself.",
+    inputSchema: z.object({
+      botId: z
+        .string()
+        .describe("The teammate's ID, from the list in your instructions"),
+      reason: z
+        .string()
+        .describe(
+          "One short sentence on why they fit, shown to the user and the teammate"
+        ),
+    }),
+    execute: async ({ botId }) => {
+      const teammate = turnBot.teammates.find((bot) => bot.id === botId)
+      if (!teammate) {
+        throw new Error(
+          "That ID isn't a teammate you can hand off to. Use one from the list in your instructions."
+        )
+      }
+      return { botId: teammate.id, name: teammate.name }
+    },
+  }),
 }
 
-export type ChatUIMessage = InferChatUIMessageFromTools<typeof tools>
+// Ends the reply once a handoff went through. A failed one lets the bot try again.
+export const handedOff: StopCondition<typeof tools> = ({ steps }) =>
+  steps.at(-1)?.toolResults.some((result) => result.toolName === "handoff") ??
+  false
+
+// The bot that wrote a reply, so group chats can show who said what
+export type ChatMessageMetadata = { botId?: string }
+
+export type ChatUIMessage = UIMessage<
+  ChatMessageMetadata,
+  UIDataTypes,
+  InferUITools<typeof tools>
+>

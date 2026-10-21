@@ -4,6 +4,7 @@ import { useChat } from "@ai-sdk/react"
 import type { TriggerChatTransport } from "@trigger.dev/sdk/chat"
 import {
   type InferChatUIMessage,
+  useChatActions,
   useLoadTranscript,
   useTriggerChatTransport,
 } from "@trigger.dev/sdk/chat/react"
@@ -13,6 +14,7 @@ import {
   FilePenIcon,
   FileTextIcon,
   FolderOpenIcon,
+  ForwardIcon,
   KeyboardIcon,
   MonitorIcon,
   MouseIcon,
@@ -22,7 +24,7 @@ import {
   TypeIcon,
   type LucideIcon,
 } from "lucide-react"
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import {
   loadTranscript,
@@ -82,7 +84,11 @@ import type { chatAgent } from "@/trigger/chat"
 type ChatMessage = InferChatUIMessage<typeof chatAgent>
 type Part = ChatMessage["parts"][number]
 type ToolPart = Extract<Part, { type: `tool-${string}` }>
+type HandoffPart = Extract<Part, { type: "tool-handoff" }>
 type ChatBot = Pick<Bot, "id" | "name" | "avatar">
+
+const isHandoff = (part: Part): part is HandoffPart =>
+  part.type === "tool-handoff"
 
 export function Chat({
   chatId,
@@ -120,6 +126,10 @@ export function Chat({
       // The transcript holds what the agent streamed, so it has the agent's parts
       initialMessages={messages as ChatMessage[]}
       transport={transport}
+      // Only group chats need to tell their bots apart
+      bots={group ? bots : []}
+      // The teammate a bot handed off to answers next, and stays picked after
+      onHandoff={setBotId}
       botPicker={
         group && botId ? (
           <BotPicker bots={bots} value={botId} onValueChange={setBotId} />
@@ -177,11 +187,15 @@ function ChatView({
   chatId,
   initialMessages,
   transport,
+  bots,
+  onHandoff,
   botPicker,
 }: {
   chatId: string
   initialMessages: ChatMessage[]
   transport: TriggerChatTransport
+  bots: ChatBot[]
+  onHandoff: (botId: string) => void
   botPicker: React.ReactNode
 }) {
   const {
@@ -205,6 +219,31 @@ function ChatView({
     transport.stopGeneration(chatId)
   }, [stopLocal, transport, chatId])
 
+  const { sendAction } = useChatActions({ sendMessage })
+  // Handoffs from before this page loaded were answered then, so don't replay them
+  const answeredHandoffs = useRef(
+    new Set(
+      initialMessages
+        .flatMap((message) => message.parts)
+        .filter(isHandoff)
+        .map((part) => part.toolCallId)
+    )
+  )
+
+  // A reply that ends in a handoff asks the agent to answer again as the teammate
+  useEffect(() => {
+    if (status !== "ready") return
+    const last = messages.at(-1)
+    if (last?.role !== "assistant") return
+    const handoff = last.parts.findLast(isHandoff)
+    if (handoff?.state !== "output-available") return
+    if (answeredHandoffs.current.has(handoff.toolCallId)) return
+
+    answeredHandoffs.current.add(handoff.toolCallId)
+    onHandoff(handoff.output.botId)
+    void sendAction({ type: "handoff", botId: handoff.output.botId })
+  }, [status, messages, onHandoff, sendAction])
+
   function handleSubmit(message: PromptInputMessage) {
     if (!message.text.trim()) return
     sendMessage({ text: message.text })
@@ -220,40 +259,59 @@ function ChatView({
               description="Send a message to begin chatting"
             />
           ) : (
-            messages.map((message) => (
-              <Message from={message.role} key={message.id}>
-                <MessageContent>
-                  {groupParts(message.parts).map((block) => {
-                    const key = `${message.id}-${block.index}`
-                    switch (block.kind) {
-                      case "text":
-                        return (
-                          <MessageResponse key={key}>
-                            {block.text}
-                          </MessageResponse>
-                        )
-                      case "tools":
-                        return (
-                          <Trace key={key}>
-                            {block.parts.map((part) => (
-                              <ToolRow key={part.toolCallId} part={part} />
-                            ))}
-                          </Trace>
-                        )
-                      case "screen":
-                        return (
-                          <Image
-                            key={key}
-                            base64={block.base64}
-                            mediaType={block.mediaType}
-                            alt="Screenshot of the sandbox desktop"
-                          />
-                        )
-                    }
-                  })}
-                </MessageContent>
-              </Message>
-            ))
+            messages.map((message) => {
+              // The agent tags each reply with the bot that wrote it
+              const author =
+                message.role === "assistant"
+                  ? bots.find((bot) => bot.id === message.metadata?.botId)
+                  : undefined
+
+              return (
+                <Message
+                  from={message.role}
+                  key={message.id}
+                  className={author ? "flex-row items-start gap-3" : undefined}
+                >
+                  {author && (
+                    <ChatAvatar
+                      seed={author.avatar}
+                      className="size-6"
+                      alt={author.name}
+                    />
+                  )}
+                  <MessageContent>
+                    {groupParts(message.parts).map((block) => {
+                      const key = `${message.id}-${block.index}`
+                      switch (block.kind) {
+                        case "text":
+                          return (
+                            <MessageResponse key={key}>
+                              {block.text}
+                            </MessageResponse>
+                          )
+                        case "tools":
+                          return (
+                            <Trace key={key}>
+                              {block.parts.map((part) => (
+                                <ToolRow key={part.toolCallId} part={part} />
+                              ))}
+                            </Trace>
+                          )
+                        case "screen":
+                          return (
+                            <Image
+                              key={key}
+                              base64={block.base64}
+                              mediaType={block.mediaType}
+                              alt="Screenshot of the sandbox desktop"
+                            />
+                          )
+                      }
+                    })}
+                  </MessageContent>
+                </Message>
+              )
+            })
           )}
           {error && (
             <Alert variant="destructive">
@@ -418,8 +476,15 @@ function summarize(part: ToolPart): ToolSummary {
     case "tool-moveMouse":
       return {
         icon: MousePointer2Icon,
-        verbs: ["Moving the pointer", "Moved the pointer", "Failed to move the pointer"],
-        subject: part.input?.x === undefined ? "" : `to (${part.input.x}, ${part.input.y})`,
+        verbs: [
+          "Moving the pointer",
+          "Moved the pointer",
+          "Failed to move the pointer",
+        ],
+        subject:
+          part.input?.x === undefined
+            ? ""
+            : `to (${part.input.x}, ${part.input.y})`,
       }
     case "tool-scroll":
       return {
@@ -434,6 +499,14 @@ function summarize(part: ToolPart): ToolSummary {
         subject: [...(part.input?.modifiers ?? []), part.input?.key ?? "a key"]
           .filter(Boolean)
           .join("+"),
+      }
+    case "tool-handoff":
+      return {
+        icon: ForwardIcon,
+        verbs: ["Handing off to", "Handed off to", "Failed to hand off to"],
+        subject:
+          part.state === "output-available" ? part.output.name : "a teammate",
+        description: part.input?.reason,
       }
     case "tool-typeText":
       return {
