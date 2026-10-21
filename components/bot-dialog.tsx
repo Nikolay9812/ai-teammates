@@ -52,6 +52,8 @@ import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
 import { insertBotSchema, type Bot } from "@/db/schema"
+import { usePlanGate } from "@/hooks/use-plan-gate"
+import { BOTS, SANDBOXES } from "@/lib/plan"
 
 type BotFormInput = z.input<typeof insertBotSchema>
 type BotFormOutput = z.output<typeof insertBotSchema>
@@ -111,6 +113,7 @@ function BotDialog({
   const [open, setOpen] = React.useState(false)
   const [isPending, startTransition] = React.useTransition()
   const [isDeleting, startDeleteTransition] = React.useTransition()
+  const planAllows = usePlanGate()
 
   const form = useForm<BotFormInput, unknown, BotFormOutput>({
     resolver: zodResolver(insertBotSchema),
@@ -119,6 +122,8 @@ function BotDialog({
   const avatar = useWatch({ control: form.control, name: "avatar" })
 
   function handleOpenChange(next: boolean) {
+    // Editing stays free, but a new bot and its sandbox need the plan
+    if (next && !bot && !planAllows(BOTS, SANDBOXES)) return
     // Start edits from the saved bot, and new bots blank with a fresh face
     if (next) form.reset(bot ? botValues(bot) : emptyValues())
     setOpen(next)

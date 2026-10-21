@@ -17,9 +17,15 @@ import {
   insertBotSchema,
 } from "@/db/schema"
 import { createBotSandbox, deleteBotSandbox } from "@/lib/daytona"
+import { BOTS, PLAN_REQUIRED, SANDBOXES } from "@/lib/plan"
 
 export async function createBot(input: z.input<typeof insertBotSchema>) {
-  const { userId } = await auth.protect()
+  const { userId, has } = await auth.protect()
+
+  // Every bot gets a sandbox, so creating one takes both features
+  if (!has({ feature: BOTS }) || !has({ feature: SANDBOXES })) {
+    throw new Error(PLAN_REQUIRED)
+  }
 
   const parsed = insertBotSchema.safeParse(input)
   if (!parsed.success) {

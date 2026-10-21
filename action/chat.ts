@@ -1,5 +1,6 @@
 "use server"
 
+import { auth as clerkAuth } from "@clerk/nextjs/server"
 import { auth } from "@trigger.dev/sdk"
 import {
   chat,
@@ -9,6 +10,7 @@ import {
 } from "@trigger.dev/sdk/ai"
 
 import { getDesktopUrl } from "@/lib/daytona"
+import { BOTS, type Feature, PLAN_REQUIRED, SANDBOXES } from "@/lib/plan"
 import { getChat } from "@/queries/chats"
 import type { chatAgent } from "@/trigger/chat"
 
@@ -21,9 +23,19 @@ async function assertChatOwner(chatId: string) {
   if (!owned) throw new Error("Chat not found")
 }
 
+async function assertFeatures(...features: Feature[]) {
+  const { has } = await clerkAuth.protect()
+  if (!features.every((feature) => has({ feature }))) {
+    throw new Error(PLAN_REQUIRED)
+  }
+}
+
+// Reading a transcript stays free; starting a chat is using its bots. The agent
+// checks the plan again on every turn, since sessions outlive this call.
 export async function startChatSession(
   params: ChatStartSessionParams<typeof chatAgent>
 ) {
+  await assertFeatures(BOTS, SANDBOXES)
   await assertChatOwner(params.chatId)
   return start(params)
 }
@@ -43,6 +55,7 @@ export async function loadTranscript(params: ChatLoadTranscriptParams) {
 
 // The desktop of the chat's bot, started if its sandbox was stopped
 export async function getChatDesktopUrl(chatId: string) {
+  await assertFeatures(SANDBOXES)
   const chat = await getChat(chatId)
   if (!chat) throw new Error("Chat not found")
   if (chat.kind === "group") throw new Error("Group chats have no desktop")

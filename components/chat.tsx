@@ -82,6 +82,8 @@ import {
   TraceTitle,
 } from "@/components/ui/trace"
 import type { Bot } from "@/db/schema"
+import { usePlanGate } from "@/hooks/use-plan-gate"
+import { BOTS, SANDBOXES } from "@/lib/plan"
 import type { chatAgent } from "@/trigger/chat"
 
 type ChatMessage = InferChatUIMessage<typeof chatAgent>
@@ -229,6 +231,7 @@ function ChatView({
   }, [stopLocal, transport, chatId])
 
   const { sendAction } = useChatActions({ sendMessage })
+  const planAllows = usePlanGate()
   // Handoffs from before this page loaded were answered then, so don't replay them
   const answeredHandoffs = useRef(
     new Set(
@@ -255,6 +258,8 @@ function ChatView({
 
   function handleSubmit(message: PromptInputMessage) {
     if (!message.text.trim()) return
+    // Bots answer with their sandboxes, so a turn needs both features
+    if (!planAllows(BOTS, SANDBOXES)) return
     // Remembers who the message was for, so the conversation can show it
     sendMessage({ text: message.text, metadata: { botId } })
   }

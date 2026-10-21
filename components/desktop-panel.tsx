@@ -19,6 +19,8 @@ import { ResizableHandle, ResizablePanel } from "@/components/ui/resizable"
 import { Spinner } from "@/components/ui/spinner"
 import { toast } from "@/components/ui/toast"
 import { Toggle } from "@/components/ui/toggle"
+import { usePlanGate } from "@/hooks/use-plan-gate"
+import { SANDBOXES } from "@/lib/plan"
 
 type DesktopStatus = "idle" | "loading" | "ready" | "error"
 
@@ -59,8 +61,11 @@ export function DesktopPanelProvider({
   const [url, setUrl] = useState<string | null>(null)
   const [panelSlot, setPanelSlot] = useState<HTMLElement | null>(null)
   const [dialogSlot, setDialogSlot] = useState<HTMLElement | null>(null)
+  const planAllows = usePlanGate()
 
   async function reload() {
+    // Connecting to a sandbox's desktop needs the plan
+    if (!planAllows(SANDBOXES)) return
     setStatus("loading")
     try {
       setUrl(await getChatDesktopUrl(chatId))
@@ -75,6 +80,8 @@ export function DesktopPanelProvider({
   }
 
   function setOpen(next: boolean) {
+    // Without the plan the panel would only ever show an error
+    if (next && !planAllows(SANDBOXES)) return
     setOpenState(next)
     // Load the desktop the first time it's shown, then keep it for the page's lifetime
     if (next && status === "idle") reload()

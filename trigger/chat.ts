@@ -7,7 +7,9 @@ import { z } from "zod"
 
 import { db } from "@/db"
 import { type Bot, type Chat, chatMembers, chats } from "@/db/schema"
+import { userHasFeatures } from "@/lib/clerk"
 import { forgetStartedSandboxes, MEMORY_FILE } from "@/lib/daytona"
+import { BOTS, PLAN_REQUIRED, SANDBOXES } from "@/lib/plan"
 import {
   type ChatUIMessage,
   handedOff,
@@ -162,6 +164,11 @@ export const chatAgent = chat
         handoffTo ?? clientData?.botId
       )
       if (!bot.sandboxId) throw new Error(`Bot ${bot.id} has no sandbox`)
+
+      // Sessions outlive the plan check made when they started, so every turn checks again
+      if (!(await userHasFeatures(room.userId, [BOTS, SANDBOXES]))) {
+        throw new Error(PLAN_REQUIRED)
+      }
 
       const teammates = members
         .filter((member) => member.id !== bot.id)
