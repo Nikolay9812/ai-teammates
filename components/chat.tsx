@@ -102,7 +102,9 @@ export function Chat({
   bots: ChatBot[]
   group: boolean
 }) {
-  const [botId, setBotId] = useState(bots[0]?.id)
+  const [pickedId, setBotId] = useState(bots[0]?.id)
+  // The picked bot may have been removed from the group since
+  const botId = bots.some((bot) => bot.id === pickedId) ? pickedId : bots[0]?.id
   const transport = useTriggerChatTransport<typeof chatAgent>({
     task: "chat",
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
