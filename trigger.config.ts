@@ -1,4 +1,6 @@
 import { defineConfig } from "@trigger.dev/sdk";
+import { esbuildPlugin } from "@trigger.dev/build/extensions";
+import { sentryEsbuildPlugin } from "@sentry/esbuild-plugin";
 
 export default defineConfig({
   project: "proj_eunppbqqgcpqiktkiyyy",
@@ -22,5 +24,16 @@ export default defineConfig({
   build: {
     // Tasks read the database through `@/db`, which imports "server-only"
     conditions: ["react-server"],
+    extensions: [
+      // Uploads source maps on deploy so task stack traces in Sentry are readable
+      esbuildPlugin(
+        sentryEsbuildPlugin({
+          org: "codewithantonio-hg",
+          project: "ai-teammates",
+          authToken: process.env.SENTRY_AUTH_TOKEN,
+        }),
+        { placement: "last", target: "deploy" }
+      ),
+    ],
   },
 });
