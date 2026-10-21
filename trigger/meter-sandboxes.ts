@@ -1,4 +1,5 @@
-import { logger, schedules } from "@trigger.dev/sdk"
+import * as Sentry from "@sentry/node"
+import { schedules } from "@trigger.dev/sdk"
 import { SandboxState, type Sandbox } from "@daytona/sdk"
 import { inArray } from "drizzle-orm"
 
@@ -76,11 +77,31 @@ export const meterSandboxes = schedules.task({
       const usage = await usageByUser.get(userId)
       if (usage && sandboxLeft(usage) > 0) continue
 
-      await sandbox.stop().catch((error) => {
-        logger.error("Couldn't stop sandbox", { sandboxId: sandbox.id, error })
-      })
+      const attributes = {
+        "user.id": userId,
+        "bot.id": sandbox.labels.botId,
+        "sandbox.id": sandbox.id,
+        "sandbox.stop_reason": usage ? "out_of_hours" : "no_plan",
+      }
+      try {
+        await sandbox.stop()
+        Sentry.logger.info("Sandbox stopped", attributes)
+      } catch (error) {
+        // It keeps running, and is charged again next sample
+        Sentry.logger.error("Couldn't stop sandbox", {
+          ...attributes,
+          "error.type": error instanceof Error ? error.name : typeof error,
+        })
+      }
       stopped++
     }
+
+    Sentry.logger.info("Sandboxes metered", {
+      "sandbox.started_count": started.length,
+      "sandbox.charged_count": running.length,
+      "sandbox.stopped_count": stopped,
+      "sandbox.charged_seconds": seconds,
+    })
 
     return { charged: running.length, seconds, stopped }
   },

@@ -13,6 +13,19 @@ Sentry.init({
     process.env.NODE_ENV === "production" ? "production" : "development",
 })
 
+// Every log from a run says which run it came from. A process runs one run at a time.
+tasks.onStart(({ ctx }) => {
+  Sentry.getGlobalScope().setAttributes({
+    "trigger.task": ctx.task.id,
+    "trigger.run": ctx.run.id,
+  })
+})
+
+// Logs are sent in batches, and the process can be frozen at a wait or gone once the
+// run ends, taking an unsent batch with it
+tasks.onWait(() => Sentry.flush(2000).then(() => {}))
+tasks.onComplete(() => Sentry.flush(2000).then(() => {}))
+
 // Fires once a run has used up its retries. The payload is left out, as a
 // chat's payload is the person's messages.
 tasks.onFailure(async ({ error, ctx }) => {

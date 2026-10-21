@@ -1,6 +1,7 @@
 "use server"
 
 import { auth } from "@clerk/nextjs/server"
+import * as Sentry from "@sentry/nextjs"
 import { and, eq, inArray } from "drizzle-orm"
 import { nanoid } from "nanoid"
 import { revalidatePath } from "next/cache"
@@ -41,12 +42,22 @@ export async function createBot(input: z.input<typeof insertBotSchema>) {
   const usage = await getUsage(userId)
   if (!usage) throw new Error(PLAN_REQUIRED)
   if (usage.bots.used >= usage.bots.limit) {
+    Sentry.logger.info("Bot creation refused by plan limit", {
+      "user.id": userId,
+      "plan.limit": "bots",
+      "plan.slug": usage.plan,
+    })
     return {
       ok: false as const,
       limit: `Your plan allows ${usage.bots.limit} bots. Delete one to make room.`,
     }
   }
   if (sandboxLeft(usage) <= 0) {
+    Sentry.logger.info("Bot creation refused by plan limit", {
+      "user.id": userId,
+      "plan.limit": "sandbox_hours",
+      "plan.slug": usage.plan,
+    })
     return {
       ok: false as const,
       limit: limitMessage("sandbox hours", usage.period.end),
@@ -83,9 +94,23 @@ export async function createBot(input: z.input<typeof insertBotSchema>) {
     ])
   } catch (error) {
     // Don't leave a sandbox behind for a bot that was never saved
-    await deleteBotSandbox(sandboxId).catch(() => {})
+    await deleteBotSandbox(sandboxId).catch(() => {
+      // It keeps costing until someone deletes it by hand
+      Sentry.logger.error("Couldn't delete the sandbox of an unsaved bot", {
+        "user.id": userId,
+        "bot.id": botId,
+        "sandbox.id": sandboxId,
+      })
+    })
     throw error
   }
+
+  Sentry.logger.info("Bot created", {
+    "user.id": userId,
+    "bot.id": botId,
+    "chat.id": chatId,
+    "sandbox.id": sandboxId,
+  })
 
   revalidatePath("/")
 
@@ -150,6 +175,12 @@ export async function deleteBot(botId: string) {
 
   const [{ sandboxId }] = deleted
   if (sandboxId) await deleteBotSandbox(sandboxId)
+
+  Sentry.logger.info("Bot deleted", {
+    "user.id": userId,
+    "bot.id": botId,
+    ...(sandboxId && { "sandbox.id": sandboxId }),
+  })
 
   revalidatePath("/", "layout")
   // The page that opened the dialog may be the chat that was just deleted

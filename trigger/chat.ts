@@ -1,5 +1,6 @@
 import { anthropic } from "@ai-sdk/anthropic"
 import { google } from "@ai-sdk/google"
+import * as Sentry from "@sentry/node"
 import { chat } from "@trigger.dev/sdk/ai"
 import { APICallError, stepCountIs } from "ai"
 import { asc, eq } from "drizzle-orm"
@@ -126,8 +127,11 @@ const pendingHandoff = chat.local<{ botId: string | null }>({
 // Who pays for this turn and how much AI allowance it has left, set in onTurnStart
 const turnBudget = chat.local<{
   userId: string
+  chatId: string
   botId: string
   aiMicrosLeft: number
+  spentMicros: number
+  handedOff: boolean
 }>({ id: "turnBudget" })
 
 // Every tool but handoff, for turns with nobody to hand off to
@@ -177,12 +181,22 @@ export const chatAgent = chat
       const usage = await getUsage(room.userId)
       if (!usage) throw new Error(PLAN_REQUIRED)
       if (aiLeft(usage) <= 0) {
+        Sentry.logger.info("Chat turn refused by plan limit", {
+          "user.id": room.userId,
+          "chat.id": chatId,
+          "bot.id": bot.id,
+          "plan.limit": "ai_allowance",
+          "plan.slug": usage.plan,
+        })
         throw new Error(limitMessage("AI allowance", usage.period.end))
       }
       turnBudget.init({
         userId: room.userId,
+        chatId,
         botId: bot.id,
         aiMicrosLeft: aiLeft(usage),
+        spentMicros: 0,
+        handedOff: Boolean(handoffTo),
       })
 
       const teammates = members
@@ -225,6 +239,7 @@ export const chatAgent = chat
         onStepEnd: async (step) => {
           const costMicros = tokenCostMicros(step.model.modelId, step.usage)
           turnBudget.aiMicrosLeft -= costMicros
+          turnBudget.spentMicros += costMicros
           await recordUsage([
             {
               userId: turnBudget.userId,
@@ -241,6 +256,25 @@ export const chatAgent = chat
               },
             },
           ])
+        },
+        // One line per reply, to see what a turn cost and why it stopped
+        onEnd: ({ steps, finishReason, totalUsage }) => {
+          Sentry.logger.info("Chat turn finished", {
+            "user.id": turnBudget.userId,
+            "chat.id": turnBudget.chatId,
+            "bot.id": turnBudget.botId,
+            "chat.turn.steps": steps.length,
+            "chat.turn.finish_reason": finishReason,
+            "chat.turn.handed_off_from": turnBudget.handedOff,
+            "chat.turn.hands_off": steps.some((step) =>
+              step.toolResults.some((result) => result.toolName === "handoff")
+            ),
+            "chat.turn.budget_exhausted": turnBudget.aiMicrosLeft <= 0,
+            "chat.turn.sandbox_limited": Boolean(turnBot.sandboxLimit),
+            "gen_ai.usage.input_tokens": totalUsage.inputTokens ?? 0,
+            "gen_ai.usage.output_tokens": totalUsage.outputTokens ?? 0,
+            "usage.cost_micros": turnBudget.spentMicros,
+          })
         },
       }),
   })

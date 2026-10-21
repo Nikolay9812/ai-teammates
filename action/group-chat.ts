@@ -1,6 +1,7 @@
 "use server"
 
 import { auth } from "@clerk/nextjs/server"
+import * as Sentry from "@sentry/nextjs"
 import { and, eq, inArray, notInArray } from "drizzle-orm"
 import { nanoid } from "nanoid"
 import { revalidatePath } from "next/cache"
@@ -45,6 +46,12 @@ export async function createGroupChat(
       .insert(chatMembers)
       .values(owned.map((bot) => ({ chatId, botId: bot.id }))),
   ])
+
+  Sentry.logger.info("Group chat created", {
+    "user.id": userId,
+    "chat.id": chatId,
+    "chat.bot_count": owned.length,
+  })
 
   revalidatePath("/")
 
@@ -104,6 +111,12 @@ export async function updateGroupChat(
       .onConflictDoNothing(),
   ])
 
+  Sentry.logger.info("Group chat updated", {
+    "user.id": userId,
+    "chat.id": chatId,
+    "chat.bot_count": owned.length,
+  })
+
   // The name and faces show in the sidebar and in the chat header
   revalidatePath("/", "layout")
 
@@ -126,6 +139,11 @@ export async function deleteGroupChat(chatId: string) {
     .returning({ id: chats.id })
 
   if (deleted.length === 0) throw new Error("Group chat not found")
+
+  Sentry.logger.info("Group chat deleted", {
+    "user.id": userId,
+    "chat.id": chatId,
+  })
 
   revalidatePath("/", "layout")
   // The page that opened the dialog is the chat that was just deleted

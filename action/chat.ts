@@ -1,6 +1,7 @@
 "use server"
 
 import { auth as clerkAuth } from "@clerk/nextjs/server"
+import * as Sentry from "@sentry/nextjs"
 import { auth } from "@trigger.dev/sdk"
 import {
   chat,
@@ -74,6 +75,12 @@ export async function getChatDesktopUrl(chatId: string) {
   const usage = await getUsage(userId)
   if (!usage) throw new Error(PLAN_REQUIRED)
   if (sandboxLeft(usage) <= 0) {
+    Sentry.logger.info("Desktop refused by plan limit", {
+      "user.id": userId,
+      "chat.id": chatId,
+      "plan.limit": "sandbox_hours",
+      "plan.slug": usage.plan,
+    })
     return {
       ok: false as const,
       limit: limitMessage("sandbox hours", usage.period.end),
