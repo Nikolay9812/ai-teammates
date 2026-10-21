@@ -7,9 +7,10 @@ import { z } from "zod"
 
 import { db } from "@/db"
 import { type Bot, type Chat, chatMembers, chats } from "@/db/schema"
-import { userHasFeatures } from "@/lib/clerk"
 import { forgetStartedSandboxes, MEMORY_FILE } from "@/lib/daytona"
-import { BOTS, PLAN_REQUIRED, SANDBOXES } from "@/lib/plan"
+import { limitMessage, PLAN_REQUIRED } from "@/lib/plan"
+import { tokenCostMicros } from "@/lib/pricing"
+import { aiLeft, getUsage, recordUsage, sandboxLeft } from "@/lib/usage"
 import {
   type ChatUIMessage,
   handedOff,
@@ -122,6 +123,13 @@ const pendingHandoff = chat.local<{ botId: string | null }>({
   id: "pendingHandoff",
 })
 
+// Who pays for this turn and how much AI allowance it has left, set in onTurnStart
+const turnBudget = chat.local<{
+  userId: string
+  botId: string
+  aiMicrosLeft: number
+}>({ id: "turnBudget" })
+
 // Every tool but handoff, for turns with nobody to hand off to
 const soloTools = (Object.keys(tools) as (keyof typeof tools)[]).filter(
   (name) => name !== "handoff"
@@ -166,9 +174,16 @@ export const chatAgent = chat
       if (!bot.sandboxId) throw new Error(`Bot ${bot.id} has no sandbox`)
 
       // Sessions outlive the plan check made when they started, so every turn checks again
-      if (!(await userHasFeatures(room.userId, [BOTS, SANDBOXES]))) {
-        throw new Error(PLAN_REQUIRED)
+      const usage = await getUsage(room.userId)
+      if (!usage) throw new Error(PLAN_REQUIRED)
+      if (aiLeft(usage) <= 0) {
+        throw new Error(limitMessage("AI allowance", usage.period.end))
       }
+      turnBudget.init({
+        userId: room.userId,
+        botId: bot.id,
+        aiMicrosLeft: aiLeft(usage),
+      })
 
       const teammates = members
         .filter((member) => member.id !== bot.id)
@@ -180,6 +195,11 @@ export const chatAgent = chat
         botId: bot.id,
         sandboxId: bot.sandboxId,
         teammates: canHandOff ? teammates : [],
+        // Without sandbox hours the bot can still talk, but not use its computer
+        sandboxLimit:
+          sandboxLeft(usage) > 0
+            ? null
+            : limitMessage("sandbox hours", usage.period.end),
       })
       chat.prompt.set(systemPrompt(bot, room, teammates, canHandOff))
       chat.setUIMessageStreamOptions({
@@ -193,7 +213,34 @@ export const chatAgent = chat
         tools,
         activeTools: turnBot.teammates.length > 0 ? undefined : soloTools,
         abortSignal: signal,
-        // Computer use takes many small steps, and a handoff ends the reply
-        stopWhen: [stepCountIs(50), handedOff],
+        // Computer use takes many small steps, and a handoff ends the reply.
+        // A reply also ends once it has spent the rest of the AI allowance.
+        stopWhen: [
+          stepCountIs(50),
+          handedOff,
+          () => turnBudget.aiMicrosLeft <= 0,
+        ],
+        // Each model call goes on the ledger as it finishes, so a stopped or failed
+        // turn still pays for the calls it made
+        onStepEnd: async (step) => {
+          const costMicros = tokenCostMicros(step.model.modelId, step.usage)
+          turnBudget.aiMicrosLeft -= costMicros
+          await recordUsage([
+            {
+              userId: turnBudget.userId,
+              meter: "ai",
+              costMicros,
+              quantity: step.usage.totalTokens ?? 0,
+              botId: turnBudget.botId,
+              detail: {
+                model: step.model.modelId,
+                inputTokens: step.usage.inputTokens,
+                outputTokens: step.usage.outputTokens,
+                cacheReadTokens: step.usage.inputTokenDetails.cacheReadTokens,
+                cacheWriteTokens: step.usage.inputTokenDetails.cacheWriteTokens,
+              },
+            },
+          ])
+        },
       }),
   })

@@ -52,7 +52,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
 import { insertBotSchema, type Bot } from "@/db/schema"
-import { usePlanGate } from "@/hooks/use-plan-gate"
+import { useLimitToast, usePlanGate } from "@/hooks/use-plan-gate"
 import { BOTS, SANDBOXES } from "@/lib/plan"
 
 type BotFormInput = z.input<typeof insertBotSchema>
@@ -114,6 +114,7 @@ function BotDialog({
   const [isPending, startTransition] = React.useTransition()
   const [isDeleting, startDeleteTransition] = React.useTransition()
   const planAllows = usePlanGate()
+  const showLimit = useLimitToast()
 
   const form = useForm<BotFormInput, unknown, BotFormOutput>({
     resolver: zodResolver(insertBotSchema),
@@ -135,6 +136,10 @@ function BotDialog({
         const result = bot
           ? await updateBot(bot.id, values)
           : await createBot(values)
+        if (!result.ok && "limit" in result) {
+          showLimit(result.limit)
+          return
+        }
         if (!result.ok) {
           for (const [key, messages] of Object.entries(result.errors)) {
             form.setError(key as keyof BotFormInput, {

@@ -2,6 +2,8 @@
 import { relations } from "drizzle-orm"
 import {
   index,
+  integer,
+  jsonb,
   pgEnum,
   pgTable,
   primaryKey,
@@ -107,6 +109,36 @@ export const chatMembers = pgTable(
 
 export type ChatMember = typeof chatMembers.$inferSelect
 export type NewChatMember = typeof chatMembers.$inferInsert
+
+export const usageMeter = pgEnum("usage_meter", ["ai", "sandbox"])
+
+// The usage ledger: one row per metered event, never updated. A period's usage is the
+// sum of its rows. No foreign keys, so deleting a bot can't erase what it used.
+export const usageEntries = pgTable(
+  "usage_entries",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    // Clerk user ID of the payer
+    userId: text("user_id").notNull(),
+    meter: usageMeter("meter").notNull(),
+    // What it cost us, in millionths of a US dollar
+    costMicros: integer("cost_micros").notNull(),
+    // Tokens for the ai meter, seconds of runtime for the sandbox meter
+    quantity: integer("quantity").notNull(),
+    botId: text("bot_id"),
+    // Model and token split, or sandbox ID and size, for auditing a charge
+    detail: jsonb("detail").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("usage_entries_user_id_idx").on(t.userId, t.meter, t.createdAt)]
+)
+
+export type UsageEntry = typeof usageEntries.$inferSelect
+export type NewUsageEntry = typeof usageEntries.$inferInsert
 
 export const botsRelations = relations(bots, ({ many }) => ({
   memberships: many(chatMembers),

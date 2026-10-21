@@ -26,6 +26,7 @@ import {
   TypeIcon,
   type LucideIcon,
 } from "lucide-react"
+import Link from "next/link"
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import {
@@ -83,7 +84,7 @@ import {
 } from "@/components/ui/trace"
 import type { Bot } from "@/db/schema"
 import { usePlanGate } from "@/hooks/use-plan-gate"
-import { BOTS, SANDBOXES } from "@/lib/plan"
+import { BOTS, LIMIT_REACHED, SANDBOXES } from "@/lib/plan"
 import type { chatAgent } from "@/trigger/chat"
 
 type ChatMessage = InferChatUIMessage<typeof chatAgent>
@@ -350,14 +351,26 @@ function ChatView({
               <AlertTitle>Something went wrong</AlertTitle>
               <AlertDescription>{error.message}</AlertDescription>
               <AlertAction>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => regenerate()}
-                >
-                  Retry
-                </Button>
+                {/* Retrying can't help once an allowance is spent */}
+                {error.message.startsWith(LIMIT_REACHED) ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    nativeButton={false}
+                    render={<Link href="/usage" />}
+                  >
+                    See usage
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => regenerate()}
+                  >
+                    Retry
+                  </Button>
+                )}
               </AlertAction>
             </Alert>
           )}

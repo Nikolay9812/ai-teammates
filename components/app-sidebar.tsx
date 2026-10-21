@@ -1,4 +1,3 @@
-import { UserButton } from "@clerk/nextjs"
 import { formatDistanceToNowStrict } from "date-fns"
 
 import { ChatAvatar } from "@/components/chat-avatar"
@@ -18,6 +17,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar"
+import { UserMenu } from "@/components/user-menu"
 import { getBots, getChats, type ChatListItem } from "@/queries/bots"
 
 // Direct chats show their bot's face, group chats all of theirs
@@ -111,22 +111,7 @@ export async function AppSidebar() {
               render={<div />}
               className="p-0 *:size-full group-data-[collapsible=icon]:p-0!"
             >
-              <UserButton
-                showName
-                appearance={{
-                  elements: {
-                    rootBox: "flex size-full",
-                    userButtonTrigger:
-                      "flex size-full items-center rounded-md p-2 text-inherit ring-sidebar-ring outline-hidden focus-visible:ring-2 group-data-[collapsible=icon]:p-1",
-                    userButtonBox:
-                      "w-full min-w-0 flex-row-reverse justify-end gap-2",
-                    userButtonOuterIdentifier:
-                      "truncate ps-0 text-sm font-normal text-inherit group-data-[collapsible=icon]:hidden",
-                    userButtonAvatarBox:
-                      "size-8 shrink-0 group-data-[collapsible=icon]:size-6",
-                  },
-                }}
-              />
+              <UserMenu />
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

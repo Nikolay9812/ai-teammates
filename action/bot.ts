@@ -17,7 +17,8 @@ import {
   insertBotSchema,
 } from "@/db/schema"
 import { createBotSandbox, deleteBotSandbox } from "@/lib/daytona"
-import { BOTS, PLAN_REQUIRED, SANDBOXES } from "@/lib/plan"
+import { BOTS, limitMessage, PLAN_REQUIRED, SANDBOXES } from "@/lib/plan"
+import { getUsage, sandboxLeft } from "@/lib/usage"
 
 export async function createBot(input: z.input<typeof insertBotSchema>) {
   const { userId, has } = await auth.protect()
@@ -32,6 +33,23 @@ export async function createBot(input: z.input<typeof insertBotSchema>) {
     return {
       ok: false as const,
       errors: z.flattenError(parsed.error).fieldErrors,
+    }
+  }
+
+  // Each bot keeps a sandbox, so the plan caps how many there are and a new one needs
+  // sandbox hours to run in
+  const usage = await getUsage(userId)
+  if (!usage) throw new Error(PLAN_REQUIRED)
+  if (usage.bots.used >= usage.bots.limit) {
+    return {
+      ok: false as const,
+      limit: `Your plan allows ${usage.bots.limit} bots. Delete one to make room.`,
+    }
+  }
+  if (sandboxLeft(usage) <= 0) {
+    return {
+      ok: false as const,
+      limit: limitMessage("sandbox hours", usage.period.end),
     }
   }
 

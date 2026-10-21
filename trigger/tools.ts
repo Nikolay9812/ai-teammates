@@ -23,6 +23,8 @@ export const turnBot = chat.local<{
   sandboxId: string
   // Empty outside group chats, and in a turn that was handed off, so handoffs can't loop
   teammates: Teammate[]
+  // Set when the plan's sandbox hours are used up: every sandbox tool fails with it
+  sandboxLimit: string | null
 }>({ id: "turnBot" })
 
 // Keeps long command output and files from flooding the context
@@ -34,8 +36,14 @@ function truncate(text: string) {
     : text
 }
 
-const sandbox = () => getStartedSandbox(turnBot.sandboxId)
-const desktop = () => getDesktopSandbox(turnBot.sandboxId)
+// The bot reads the error as the tool's result, so it can tell the user why
+function allowedSandboxId() {
+  if (turnBot.sandboxLimit) throw new Error(turnBot.sandboxLimit)
+  return turnBot.sandboxId
+}
+
+const sandbox = () => getStartedSandbox(allowedSandboxId())
+const desktop = () => getDesktopSandbox(allowedSandboxId())
 
 // JPEG keeps a full-resolution screenshot well under the ~1 MiB stream record cap
 async function takeScreenshot() {

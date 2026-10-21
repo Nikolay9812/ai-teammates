@@ -31,3 +31,23 @@ export function usePlanGate() {
     [has, router]
   )
 }
+
+// Shows a limit the server reported, with a link to the usage page
+export function useLimitToast() {
+  const router = useRouter()
+
+  return useCallback(
+    (description: string) => {
+      toast.add({
+        type: "error",
+        title: "Plan limit reached",
+        description,
+        actionProps: {
+          children: "See usage",
+          onClick: () => router.push("/usage"),
+        },
+      })
+    },
+    [router]
+  )
+}

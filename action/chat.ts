@@ -10,7 +10,14 @@ import {
 } from "@trigger.dev/sdk/ai"
 
 import { getDesktopUrl } from "@/lib/daytona"
-import { BOTS, type Feature, PLAN_REQUIRED, SANDBOXES } from "@/lib/plan"
+import {
+  BOTS,
+  type Feature,
+  limitMessage,
+  PLAN_REQUIRED,
+  SANDBOXES,
+} from "@/lib/plan"
+import { getUsage, sandboxLeft } from "@/lib/usage"
 import { getChat } from "@/queries/chats"
 import type { chatAgent } from "@/trigger/chat"
 
@@ -53,13 +60,25 @@ export async function loadTranscript(params: ChatLoadTranscriptParams) {
   return load(params)
 }
 
-// The desktop of the chat's bot, started if its sandbox was stopped
+// The desktop of the chat's bot, started if its sandbox was stopped. Out of sandbox
+// hours it says so instead, since a thrown message doesn't reach the browser.
 export async function getChatDesktopUrl(chatId: string) {
+  const { userId } = await clerkAuth.protect()
   await assertFeatures(SANDBOXES)
   const chat = await getChat(chatId)
   if (!chat) throw new Error("Chat not found")
   if (chat.kind === "group") throw new Error("Group chats have no desktop")
   const sandboxId = chat.bots[0]?.sandboxId
   if (!sandboxId) throw new Error("Chat has no sandbox")
-  return getDesktopUrl(sandboxId)
+
+  const usage = await getUsage(userId)
+  if (!usage) throw new Error(PLAN_REQUIRED)
+  if (sandboxLeft(usage) <= 0) {
+    return {
+      ok: false as const,
+      limit: limitMessage("sandbox hours", usage.period.end),
+    }
+  }
+
+  return { ok: true as const, url: await getDesktopUrl(sandboxId) }
 }
