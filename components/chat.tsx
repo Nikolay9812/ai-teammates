@@ -9,6 +9,8 @@ import {
   useTriggerChatTransport,
 } from "@trigger.dev/sdk/chat/react"
 import {
+  BookmarkPlusIcon,
+  BrainIcon,
   CircleAlertIcon,
   EyeIcon,
   FilePenIcon,
@@ -471,6 +473,22 @@ function summarize(part: ToolPart): ToolSummary {
           : undefined,
       }
     }
+    case "tool-recall":
+      return {
+        icon: BrainIcon,
+        verbs: ["Recalling", "Recalled", "Failed to recall"],
+        subject: "memory",
+        output:
+          part.state === "output-available"
+            ? part.output.memory || "(nothing saved yet)"
+            : undefined,
+      }
+    case "tool-remember":
+      return {
+        icon: BookmarkPlusIcon,
+        verbs: ["Remembering", "Remembered", "Failed to remember"],
+        subject: part.input?.note ? `“${part.input.note}”` : "a note",
+      }
     case "tool-viewScreen":
       return {
         icon: EyeIcon,

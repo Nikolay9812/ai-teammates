@@ -7,7 +7,7 @@ import { z } from "zod"
 
 import { db } from "@/db"
 import { type Bot, type Chat, chatMembers, chats } from "@/db/schema"
-import { forgetStartedSandboxes } from "@/lib/daytona"
+import { forgetStartedSandboxes, MEMORY_FILE } from "@/lib/daytona"
 import {
   type ChatUIMessage,
   handedOff,
@@ -44,8 +44,27 @@ async function getTurnContext(chatId: string, botId?: string) {
 
 const TOOLS_GUIDE =
   "Your tools: bash runs shell commands; readFile, writeFile and listFiles handle files; " +
+  "recall and remember read and add to your memory; " +
   "viewScreen lets you look at your desktop, and showScreen also shows the screenshot to the user; " +
   "click, moveMouse, scroll, pressKey and typeText drive the desktop."
+
+// How a bot carries what it learns from one chat to the others it is in
+const MEMORY_GUIDE = [
+  "You talk to the person in more than one conversation: a private one-to-one chat, and any group chats " +
+    "they add you to. Each conversation only shows you its own messages, so nothing said in one is visible " +
+    "to you in another. Your memory is what carries across: notes you save with remember and read back " +
+    "with recall, the same notes in every conversation.",
+  "Call recall before you answer anything that could depend on another conversation: a question about " +
+    "the person, their preferences, their projects, earlier decisions or earlier work, or a reference to " +
+    "something you cannot find in this conversation. Never say you do not know something about the person, " +
+    "and never ask them to tell you, until you have called recall in this turn. " +
+    "Skip it only for requests that plainly stand on their own.",
+  "Call remember in the same turn you learn something that would be useful in a later conversation, " +
+    "and every time the person asks you to remember something. Telling them you will remember is not enough: " +
+    "unless you call remember, it is gone as soon as this conversation is. Leave out small talk and details " +
+    `that only matter to the request in front of you. The notes live in ${MEMORY_FILE} in your sandbox's ` +
+    "home directory, which you can edit with the file tools when a note has gone out of date.",
+].join("\n\n")
 
 function groupPrompt(room: Chat, teammates: Teammate[], canHandOff: boolean) {
   const roster = teammates
@@ -90,6 +109,7 @@ function systemPrompt(
       "run commands and handle files directly when you can, and use the desktop when a task needs a GUI. " +
       "On the desktop, look at the screen before you act and again afterwards to check what happened.",
     TOOLS_GUIDE,
+    MEMORY_GUIDE,
   ]
     .filter(Boolean)
     .join("\n\n")

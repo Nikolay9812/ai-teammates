@@ -8,7 +8,12 @@ import {
 } from "ai"
 import { z } from "zod"
 
-import { getDesktopSandbox, getStartedSandbox } from "@/lib/daytona"
+import {
+  getDesktopSandbox,
+  getStartedSandbox,
+  MEMORY_FILE,
+  readBotMemory,
+} from "@/lib/daytona"
 
 export type Teammate = { id: string; name: string; job: string }
 
@@ -132,6 +137,43 @@ export const tools = {
           size: file.size,
         })),
       }
+    },
+  }),
+
+  recall: tool({
+    description:
+      "Read your memory: the notes you have saved across all your conversations with the person, " +
+      "including ones you cannot see from here. Call this before answering any question about the person, " +
+      "their preferences, their projects or anything said or decided earlier, and always before saying " +
+      "you do not know something or asking them to tell you again.",
+    inputSchema: z.object({}),
+    execute: async () => ({
+      memory: truncate(await readBotMemory(await sandbox())),
+    }),
+  }),
+
+  remember: tool({
+    description:
+      "Save a note to your memory, so that you know it in every conversation with the person, not only this one. " +
+      "Call this whenever they ask you to remember something, and whenever you learn something worth knowing later: " +
+      "facts about them and their work, their preferences, decisions, standing instructions. " +
+      "Saying you will remember something does nothing unless you call this.",
+    inputSchema: z.object({
+      note: z
+        .string()
+        .describe(
+          "What to remember, as one self-contained sentence that makes sense without this conversation"
+        ),
+    }),
+    execute: async ({ note }) => {
+      const line = Buffer.from(`- ${note.trim()}\n`, "utf8").toString("base64")
+      // Encoded so no note can break out of the command, and appended so notes saved
+      // from two chats at once both survive
+      const { exitCode, result } = await (
+        await sandbox()
+      ).process.executeCommand(`echo ${line} | base64 -d >> ${MEMORY_FILE}`)
+      if (exitCode !== 0) throw new Error(result)
+      return { remembered: note.trim() }
     },
   }),
 
