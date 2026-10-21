@@ -4,9 +4,20 @@ import { auth } from "@clerk/nextjs/server"
 import { asc, desc, eq } from "drizzle-orm"
 
 import { db } from "@/db"
-import { chatMembers, chats } from "@/db/schema"
+import { bots, chatMembers, chats } from "@/db/schema"
 
-// The signed-in user's chats, most recent first, each with its first bot
+// The signed-in user's bots, oldest first
+export async function getBots() {
+  const { userId } = await auth.protect()
+
+  return db.query.bots.findMany({
+    where: eq(bots.userId, userId),
+    orderBy: asc(bots.createdAt),
+    columns: { id: true, name: true, avatar: true },
+  })
+}
+
+// The signed-in user's chats, most recent first, each with its bots
 export async function getChats() {
   const { userId } = await auth.protect()
 
@@ -16,7 +27,6 @@ export async function getChats() {
     with: {
       members: {
         orderBy: asc(chatMembers.joinedAt),
-        limit: 1,
         with: { bot: true },
       },
     },
@@ -24,7 +34,7 @@ export async function getChats() {
 
   return rows.map(({ members, ...chat }) => ({
     ...chat,
-    bot: members[0]?.bot ?? null,
+    bots: members.map((member) => member.bot),
   }))
 }
 

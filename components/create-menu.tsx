@@ -5,6 +5,7 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { PlusIcon, UsersIcon } from "lucide-react"
 
 import { BotDialog } from "@/components/bot-dialog"
+import { GroupChatDialog } from "@/components/group-chat-dialog"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -12,10 +13,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import type { Bot } from "@/db/schema"
 
-function CreateMenu() {
-  // The dialog lives outside the menu, so it survives the menu closing
+function CreateMenu({ bots }: { bots: Pick<Bot, "id" | "name" | "avatar">[] }) {
+  // The dialogs live outside the menu, so they survive the menu closing
   const [botDialog] = React.useState(() => DialogPrimitive.createHandle())
+  const [groupChatDialog] = React.useState(() => DialogPrimitive.createHandle())
 
   return (
     <>
@@ -30,13 +33,14 @@ function CreateMenu() {
             <PlusIcon />
             Create new bot
           </DropdownMenuItem>
-          <DropdownMenuItem>
+          <DropdownMenuItem onClick={() => groupChatDialog.open(null)}>
             <UsersIcon />
             Create group chat
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <BotDialog handle={botDialog} />
+      <GroupChatDialog handle={groupChatDialog} bots={bots} />
     </>
   )
 }

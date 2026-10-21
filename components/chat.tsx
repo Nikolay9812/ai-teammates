@@ -22,7 +22,7 @@ import {
   TypeIcon,
   type LucideIcon,
 } from "lucide-react"
-import { useCallback } from "react"
+import { useCallback, useState } from "react"
 
 import {
   loadTranscript,
@@ -46,10 +46,17 @@ import {
   PromptInput,
   PromptInputBody,
   PromptInputFooter,
+  PromptInputSelect,
+  PromptInputSelectContent,
+  PromptInputSelectItem,
+  PromptInputSelectTrigger,
+  PromptInputSelectValue,
   PromptInputSubmit,
   PromptInputTextarea,
+  PromptInputTools,
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input"
+import { ChatAvatar } from "@/components/chat-avatar"
 import {
   Alert,
   AlertAction,
@@ -69,18 +76,31 @@ import {
   TraceLine,
   TraceTitle,
 } from "@/components/ui/trace"
+import type { Bot } from "@/db/schema"
 import type { chatAgent } from "@/trigger/chat"
 
 type ChatMessage = InferChatUIMessage<typeof chatAgent>
 type Part = ChatMessage["parts"][number]
 type ToolPart = Extract<Part, { type: `tool-${string}` }>
+type ChatBot = Pick<Bot, "id" | "name" | "avatar">
 
-export function Chat({ chatId }: { chatId: string }) {
+export function Chat({
+  chatId,
+  bots,
+  group,
+}: {
+  chatId: string
+  bots: ChatBot[]
+  group: boolean
+}) {
+  const [botId, setBotId] = useState(bots[0]?.id)
   const transport = useTriggerChatTransport<typeof chatAgent>({
     task: "chat",
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
     startSession: ({ chatId, clientData }) =>
       startChatSession({ chatId, clientData }),
+    // Sent with every turn and kept current, so the agent answers as the picked bot
+    clientData: { botId },
   })
   const { messages, isLoading } = useLoadTranscript(chatId, loadTranscript, {
     transport,
@@ -100,7 +120,55 @@ export function Chat({ chatId }: { chatId: string }) {
       // The transcript holds what the agent streamed, so it has the agent's parts
       initialMessages={messages as ChatMessage[]}
       transport={transport}
+      botPicker={
+        group && botId ? (
+          <BotPicker bots={bots} value={botId} onValueChange={setBotId} />
+        ) : null
+      }
     />
+  )
+}
+
+// Picks which of a group's bots answers the next message
+function BotPicker({
+  bots,
+  value,
+  onValueChange,
+}: {
+  bots: ChatBot[]
+  value: string
+  onValueChange: (botId: string) => void
+}) {
+  return (
+    <PromptInputSelect
+      value={value}
+      // The wrapper drops Select's value type, so narrow it back
+      onValueChange={(next) => typeof next === "string" && onValueChange(next)}
+    >
+      <PromptInputSelectTrigger aria-label="Bot to talk to">
+        <PromptInputSelectValue>
+          {(id: string) => {
+            const bot = bots.find((bot) => bot.id === id)
+            return (
+              bot && (
+                <>
+                  <ChatAvatar seed={bot.avatar} className="size-4" />
+                  {bot.name}
+                </>
+              )
+            )
+          }}
+        </PromptInputSelectValue>
+      </PromptInputSelectTrigger>
+      <PromptInputSelectContent>
+        {bots.map((bot) => (
+          <PromptInputSelectItem key={bot.id} value={bot.id}>
+            <ChatAvatar seed={bot.avatar} className="size-4" />
+            {bot.name}
+          </PromptInputSelectItem>
+        ))}
+      </PromptInputSelectContent>
+    </PromptInputSelect>
   )
 }
 
@@ -109,10 +177,12 @@ function ChatView({
   chatId,
   initialMessages,
   transport,
+  botPicker,
 }: {
   chatId: string
   initialMessages: ChatMessage[]
   transport: TriggerChatTransport
+  botPicker: React.ReactNode
 }) {
   const {
     messages,
@@ -210,7 +280,8 @@ function ChatView({
           <PromptInputBody>
             <PromptInputTextarea placeholder="Send a message..." />
           </PromptInputBody>
-          <PromptInputFooter className="justify-end">
+          <PromptInputFooter className={botPicker ? undefined : "justify-end"}>
+            {botPicker && <PromptInputTools>{botPicker}</PromptInputTools>}
             <PromptInputSubmit status={status} onStop={stop} />
           </PromptInputFooter>
         </PromptInput>

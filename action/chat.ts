@@ -45,6 +45,8 @@ export async function loadTranscript(params: ChatLoadTranscriptParams) {
 export async function getChatDesktopUrl(chatId: string) {
   const chat = await getChat(chatId)
   if (!chat) throw new Error("Chat not found")
-  if (!chat.bot?.sandboxId) throw new Error("Chat has no sandbox")
-  return getDesktopUrl(chat.bot.sandboxId)
+  if (chat.kind === "group") throw new Error("Group chats have no desktop")
+  const sandboxId = chat.bots[0]?.sandboxId
+  if (!sandboxId) throw new Error("Chat has no sandbox")
+  return getDesktopUrl(sandboxId)
 }

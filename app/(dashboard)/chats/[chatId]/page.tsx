@@ -19,9 +19,20 @@ export default async function Page(props: PageProps<"/chats/[chatId]">) {
         <ResizablePanelGroup orientation="horizontal">
           <ResizablePanel id="chat" minSize="25" className="flex flex-col">
             <ChatHeader chat={chat} />
-            <Chat key={chat.id} chatId={chat.id} />
+            <Chat
+              key={chat.id}
+              chatId={chat.id}
+              bots={chat.bots.map(({ id, name, avatar }) => ({
+                id,
+                name,
+                avatar,
+              }))}
+              group={chat.kind === "group"}
+            />
           </ResizablePanel>
-          <DesktopPanel name={chat.bot?.name ?? chat.name ?? "Bot"} />
+          {chat.kind === "direct" && (
+            <DesktopPanel name={chat.bots[0]?.name ?? "Bot"} />
+          )}
         </ResizablePanelGroup>
       </div>
     </DesktopPanelProvider>

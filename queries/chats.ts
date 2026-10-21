@@ -6,7 +6,7 @@ import { and, asc, eq } from "drizzle-orm"
 import { db } from "@/db"
 import { chatMembers, chats } from "@/db/schema"
 
-// One of the signed-in user's chats with its first bot, or null if it isn't theirs
+// One of the signed-in user's chats with its bots, or null if it isn't theirs
 export async function getChat(chatId: string) {
   const { userId } = await auth.protect()
 
@@ -15,7 +15,6 @@ export async function getChat(chatId: string) {
     with: {
       members: {
         orderBy: asc(chatMembers.joinedAt),
-        limit: 1,
         with: { bot: true },
       },
     },
@@ -24,7 +23,7 @@ export async function getChat(chatId: string) {
   if (!row) return null
 
   const { members, ...chat } = row
-  return { ...chat, bot: members[0]?.bot ?? null }
+  return { ...chat, bots: members.map((member) => member.bot) }
 }
 
 export type ChatDetail = NonNullable<Awaited<ReturnType<typeof getChat>>>

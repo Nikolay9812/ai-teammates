@@ -10,6 +10,7 @@ import {
 } from "drizzle-orm/pg-core"
 import { createInsertSchema } from "drizzle-zod"
 import { nanoid } from "nanoid"
+import { z } from "zod"
 
 export const bots = pgTable(
   "bots",
@@ -74,6 +75,16 @@ export const chats = pgTable(
 
 export type Chat = typeof chats.$inferSelect
 export type NewChat = typeof chats.$inferInsert
+
+// Fields a user sets when creating a group chat. The server adds the owner and kind.
+export const insertGroupChatSchema = createInsertSchema(chats, {
+  // The column is nullable for direct chats, but a group needs a name
+  name: z.string().trim().min(1, "Give it a name.").max(50),
+})
+  .pick({ name: true })
+  .extend({
+    botIds: z.array(z.string()).min(2, "Pick at least two bots."),
+  })
 
 export const chatMembers = pgTable(
   "chat_members",

@@ -4,7 +4,7 @@ import { z } from "zod"
 
 import { getDesktopSandbox, getStartedSandbox } from "@/lib/daytona"
 
-// The sandbox of the bot answering this chat, set in the agent's onBoot
+// The sandbox of the bot answering this turn, set in the agent's onTurnStart
 export const botSandbox = chat.local<{ sandboxId: string }>({
   id: "botSandbox",
 })
